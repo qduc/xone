@@ -138,6 +138,48 @@ sudo install/firmware.sh
 
 5. Plug in your Xbox devices.
 
+### Secure Boot & module signing
+
+Systems with Secure Boot enabled reject unsigned kernel modules. Sign the built modules with a Machine Owner Key (MOK) that is enrolled in firmware.
+
+1. **Generate a key pair** (store it somewhere safe — the private key should stay on disk with permissions `600`):
+
+    ```bash
+    mkdir -p ~/.kernel-keys
+    openssl req -new -x509 -newkey rsa:2048 -keyout ~/.kernel-keys/xone_signing.key \
+        -out ~/.kernel-keys/xone_signing.pem -nodes -days 3650 \
+        -subj "/CN=xone module signing/"
+    openssl x509 -in ~/.kernel-keys/xone_signing.pem -outform der \
+        -out ~/.kernel-keys/xone_signing.der
+    chmod 600 ~/.kernel-keys/xone_signing.key
+    ```
+
+2. **Enroll the public key** with the firmware using the Machine Owner Key (MOK) manager. You will be prompted to set a one-time password and confirm the enrollment during the next reboot:
+
+    ```bash
+    sudo mokutil --import ~/.kernel-keys/xone_signing.der
+    ```
+
+3. **Build signed modules manually** (the `SIGN_KEY`/`SIGN_CERT` variables are also accepted by the generic `make` target):
+
+    ```bash
+    make SIGN_KEY=~/.kernel-keys/xone_signing.key \
+         SIGN_CERT=~/.kernel-keys/xone_signing.pem
+    sudo make load
+    ```
+
+    The build system runs `scripts/sign-modules.sh` after compilation and signs every `*.ko` in the repository using the kernel's `sign-file` helper (defaults to SHA-256). Override `SIGN_HASH` or `SIGN_FILE` if you need a different hash or helper path.
+
+4. **Install through DKMS with signing enabled**. The installation script signs the DKMS-built copies stored under `/var/lib/dkms/.../module` and the deployed modules in `/lib/modules/<kernel>/updates/dkms` when the signing variables are present:
+
+    ```bash
+    sudo SIGN_KEY=~/.kernel-keys/xone_signing.key \
+         SIGN_CERT=~/.kernel-keys/xone_signing.pem \
+         make install
+    ```
+
+    Repeat the command for every new kernel you install so the freshly built modules are signed before the first load.
+
 ### Updating
 
 Just run the install script again after pulling the newset changes from the repository.
