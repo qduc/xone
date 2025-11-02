@@ -150,8 +150,11 @@ for module in "${modules[@]}"; do
     # Recompress if needed
     if [ "$needs_cleanup" -eq 1 ]; then
         if [[ "$target" == *.ko.xz ]]; then
-            echo "Recompressing ${module##*/}..." >&2
-            xz -f "$uncompressed_target"
+            echo "Recompressing ${module##*/} with kernel-compatible settings..." >&2
+            # Use CRC32 checksum and a 1MiB LZMA2 dictionary so the kernel's
+            # XZ embedded decompressor can handle the module (avoids CRC64
+            # and large dictionaries which the kernel doesn't support).
+            xz --check=crc32 --lzma2=dict=1MiB -f "$uncompressed_target"
         elif [[ "$target" == *.ko.zst ]]; then
             echo "Recompressing ${module##*/}..." >&2
             zstd -f -o "$target" "$uncompressed_target"
